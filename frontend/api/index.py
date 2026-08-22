@@ -1,17 +1,12 @@
 import os
-import math
-import random
-from datetime import datetime, timezone
+import traceback
 
-# Set Skyfield directory to /tmp BEFORE any skyfield imports
-# Vercel's filesystem is read-only except /tmp
+# Set Skyfield directory to /tmp BEFORE any imports
 if os.name != 'nt':
     os.environ['SKYFIELD_DATA_DIR'] = '/tmp'
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from database import SessionLocal, TrackedObject, Conjunction, MasterCatalog
-from sqlalchemy import or_
 
 app = FastAPI(title="Satellite Conjunction Dashboard API")
 
@@ -22,17 +17,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from skyfield.api import EarthSatellite, load, wgs84
-if os.name != 'nt':
-    load.directory = '/tmp'
-ts = load.timescale()
+# Try importing everything and capture errors
+startup_errors = []
+
+try:
+    from database import SessionLocal, TrackedObject, Conjunction, MasterCatalog
+except Exception as e:
+    startup_errors.append(f"database import: {traceback.format_exc()}")
+
+try:
+    from skyfield.api import EarthSatellite, load, wgs84
+    if os.name != 'nt':
+        load.directory = '/tmp'
+    ts = load.timescale()
+except Exception as e:
+    startup_errors.append(f"skyfield import: {traceback.format_exc()}")
+    ts = None
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "env": "vercel" if os.name != 'nt' else "local"}
+    return {
+        "status": "error" if startup_errors else "ok",
+        "errors": startup_errors,
+        "python_version": os.sys.version,
+        "env_vars": list(k for k in os.environ.keys() if 'POSTGRES' in k or 'DATABASE' in k)
+    }
 
 @app.get("/api/objects")
 def get_objects():
+    if startup_errors:
+        return {"error": startup_errors}
     db = SessionLocal()
     objects = db.query(TrackedObject).all()
     
@@ -64,6 +78,8 @@ def get_objects():
 
 @app.get("/api/conjunctions")
 def get_conjunctions():
+    if startup_errors:
+        return []
     db = SessionLocal()
     conjunctions = db.query(Conjunction).order_by(Conjunction.risk_score.desc()).all()
     
@@ -86,12 +102,13 @@ def get_conjunctions():
 
 @app.post("/api/catalog/sync")
 def sync_catalog():
+    if startup_errors:
+        return {"error": startup_errors}
     import requests
     db = SessionLocal()
     groups = ['stations', 'weather', 'iridium-33-debris', 'cosmos-2251-debris']
     headers = {'User-Agent': 'OrbitalGuard/1.2'}
     
-    # Fast delete
     db.query(MasterCatalog).delete()
     db.commit()
     
@@ -118,7 +135,7 @@ def sync_catalog():
             if batch:
                 db.bulk_save_objects(batch)
                 db.commit()
-        except Exception as e:
+        except Exception:
             pass
     
     db.close()
@@ -126,6 +143,8 @@ def sync_catalog():
 
 @app.get("/api/catalog/search")
 def search_catalog(q: str):
+    if startup_errors:
+        return []
     db = SessionLocal()
     if q.isdigit():
         results = db.query(MasterCatalog).filter(MasterCatalog.norad_id == int(q)).limit(10).all()
@@ -136,8 +155,12 @@ def search_catalog(q: str):
     db.close()
     return res
 
+import random
+
 @app.post("/api/objects/add")
 def add_object(norad_id: int):
+    if startup_errors:
+        return {"error": startup_errors}
     db = SessionLocal()
     
     existing = db.query(TrackedObject).filter(TrackedObject.norad_id == norad_id).first()
@@ -161,29 +184,23 @@ def add_object(norad_id: int):
     db.add(new_obj)
     db.commit()
     db.close()
-    
-    # Skip conjunction detection on Vercel (too slow for serverless)
-    if os.name == 'nt':
-        from propagation import detect_conjunctions
-        detect_conjunctions(new_norad_id=norad_id)
     return {"status": "success"}
 
 @app.post("/api/objects/random")
 def add_random():
+    if startup_errors:
+        return {"error": startup_errors}
     db = SessionLocal()
     
-    # Clear current
     db.query(TrackedObject).delete()
     db.query(Conjunction).delete()
     
-    # Get all IDs from master
     all_ids = [r[0] for r in db.query(MasterCatalog.norad_id).all()]
     if not all_ids:
         db.close()
         return {"status": "error", "message": "master catalog is empty, run /api/catalog/sync first"}
     
     random_ids = random.sample(all_ids, min(20, len(all_ids)))
-    
     master_objs = db.query(MasterCatalog).filter(MasterCatalog.norad_id.in_(random_ids)).all()
     
     for m in master_objs:
@@ -198,15 +215,12 @@ def add_random():
         
     db.commit()
     db.close()
-    
-    # Skip conjunction detection on Vercel (too slow for serverless)
-    if os.name == 'nt':
-        from propagation import detect_conjunctions
-        detect_conjunctions()
     return {"status": "success"}
 
 @app.post("/api/objects/clear")
 def clear_objects():
+    if startup_errors:
+        return {"error": startup_errors}
     db = SessionLocal()
     db.query(TrackedObject).delete()
     db.query(Conjunction).delete()
