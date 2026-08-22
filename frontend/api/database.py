@@ -10,7 +10,9 @@ postgres_url = os.getenv("POSTGRES_URL")
 if postgres_url:
     # SQLAlchemy requires postgresql:// instead of postgres://
     if postgres_url.startswith("postgres://"):
-        postgres_url = postgres_url.replace("postgres://", "postgresql://", 1)
+        postgres_url = postgres_url.replace("postgres://", "postgresql+pg8000://", 1)
+    elif postgres_url.startswith("postgresql://"):
+        postgres_url = postgres_url.replace("postgresql://", "postgresql+pg8000://", 1)
     SQLALCHEMY_DATABASE_URL = postgres_url
     # For Postgres, we don't need check_same_thread
     engine = create_engine(SQLALCHEMY_DATABASE_URL)

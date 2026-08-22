@@ -12,7 +12,7 @@ h11==0.16.0
 idna==3.19
 jplephem==2.24
 numpy==2.5.2
-psycopg2-binary==2.9.12
+pg8000==1.31.2
 pydantic==2.13.4
 pydantic_core==2.46.4
 python-dotenv==1.2.3
