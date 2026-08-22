@@ -196,15 +196,23 @@ def add_random():
         return {"error": startup_errors}
     db = SessionLocal()
     
-    db.query(TrackedObject).delete()
-    db.query(Conjunction).delete()
-    
+    # Get all IDs from master
     all_ids = [r[0] for r in db.query(MasterCatalog.norad_id).all()]
     if not all_ids:
         db.close()
         return {"status": "error", "message": "master catalog is empty, run /api/catalog/sync first"}
+        
+    # Get currently tracked IDs
+    tracked_ids = {r[0] for r in db.query(TrackedObject.norad_id).all()}
     
-    random_ids = random.sample(all_ids, min(20, len(all_ids)))
+    # Filter to only untracked IDs
+    available_ids = [i for i in all_ids if i not in tracked_ids]
+    
+    if not available_ids:
+        db.close()
+        return {"status": "success", "message": "All master catalog objects are already tracked"}
+    
+    random_ids = random.sample(available_ids, min(20, len(available_ids)))
     master_objs = db.query(MasterCatalog).filter(MasterCatalog.norad_id.in_(random_ids)).all()
     
     for m in master_objs:
