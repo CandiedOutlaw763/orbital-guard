@@ -1,5 +1,9 @@
 import os
+import sys
 import traceback
+
+# Add api directory to Python path so Vercel can find sibling modules
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Set Skyfield directory to /tmp BEFORE any imports
 if os.name != 'nt':
