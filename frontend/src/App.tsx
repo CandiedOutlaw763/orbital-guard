@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import Globe from 'react-globe.gl';
-import { AlertTriangle, Activity, Satellite, ShieldAlert, Info, Plus, Clock, Menu, X } from 'lucide-react';
+import { AlertTriangle, Activity, Satellite, Info, Plus, Clock, Menu, X } from 'lucide-react';
 import Plot from 'react-plotly.js';
 import * as satellite from 'satellite.js';
 
@@ -73,7 +73,7 @@ function App() {
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [currentTime, setCurrentTime] = useState(new Date());
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const globeEl = useRef<any>();
+  const globeEl = useRef<any>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -154,7 +154,6 @@ function App() {
     // Compute paths and labels for all tracked objects
     const paths: any[] = [];
     const labels: any[] = [];
-    const now = new Date();
     
     objects.forEach(obj => {
       if (!obj.tle1 || !obj.tle2) return;
@@ -476,7 +475,7 @@ function App() {
                 pointsData={objects}
                 pointLat="lat"
                 pointLng="lng"
-                pointAltitude={d => d.alt / 6371}
+                pointAltitude={(d: any) => d.alt / 6371}
                 pointRadius={0.05}
                 pointColor={() => '#38bdf8'}
                 pointResolution={16}
