@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import SessionLocal, TrackedObject, Conjunction
 from datetime import datetime, timezone
 import math
+import os
 
 app = FastAPI(title="Satellite Conjunction Dashboard API")
 
@@ -14,6 +15,8 @@ app.add_middleware(
 )
 
 from skyfield.api import EarthSatellite, load, wgs84
+# Use /tmp on Vercel (read-only filesystem outside /tmp)
+load.directory = '/tmp' if not os.name == 'nt' else load.directory
 ts = load.timescale()
 
 @app.get("/api/objects")
