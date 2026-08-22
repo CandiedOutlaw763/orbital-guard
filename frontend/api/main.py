@@ -74,6 +74,42 @@ from database import MasterCatalog
 from sqlalchemy import or_
 import random
 
+@app.post("/api/catalog/sync")
+def sync_catalog(db: Session = Depends(get_db)):
+    import requests
+    groups = ['stations', 'weather', 'iridium-33-debris', 'cosmos-2251-debris']
+    headers = {'User-Agent': 'OrbitalGuard/1.2'}
+    
+    # Fast delete
+    db.query(MasterCatalog).delete()
+    db.commit()
+    
+    added = 0
+    for group in groups:
+        resp = requests.get(f"https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle", headers=headers)
+        if resp.status_code != 200: continue
+        
+        lines = resp.text.strip().split('\n')
+        batch = []
+        for i in range(0, len(lines), 3):
+            if i + 2 < len(lines):
+                name = lines[i].strip()
+                line1 = lines[i+1].strip()
+                line2 = lines[i+2].strip()
+                try:
+                    mean_motion = float(line2[52:63].strip())
+                    if mean_motion < 11.25: continue
+                    norad_id = int(line1[2:7])
+                    batch.append(MasterCatalog(norad_id=norad_id, name=name, tle_line1=line1, tle_line2=line2))
+                    added += 1
+                except: pass
+        # Fast bulk insert
+        if batch:
+            db.bulk_save_objects(batch)
+            db.commit()
+            
+    return {"status": "success", "objects_synced": added}
+
 @app.get("/api/catalog/search")
 def search_catalog(q: str):
     db = SessionLocal()
