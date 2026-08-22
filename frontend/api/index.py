@@ -1,9 +1,17 @@
+import os
+import math
+import random
+from datetime import datetime, timezone
+
+# Set Skyfield directory to /tmp BEFORE any skyfield imports
+# Vercel's filesystem is read-only except /tmp
+if os.name != 'nt':
+    os.environ['SKYFIELD_DATA_DIR'] = '/tmp'
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from database import SessionLocal, TrackedObject, Conjunction
-from datetime import datetime, timezone
-import math
-import os
+from database import SessionLocal, TrackedObject, Conjunction, MasterCatalog
+from sqlalchemy import or_
 
 app = FastAPI(title="Satellite Conjunction Dashboard API")
 
@@ -15,9 +23,13 @@ app.add_middleware(
 )
 
 from skyfield.api import EarthSatellite, load, wgs84
-# Use /tmp on Vercel (read-only filesystem outside /tmp)
-load.directory = '/tmp' if not os.name == 'nt' else load.directory
+if os.name != 'nt':
+    load.directory = '/tmp'
 ts = load.timescale()
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "env": "vercel" if os.name != 'nt' else "local"}
 
 @app.get("/api/objects")
 def get_objects():
@@ -72,14 +84,10 @@ def get_conjunctions():
     db.close()
     return res
 
-from propagation import detect_conjunctions
-from database import MasterCatalog
-from sqlalchemy import or_
-import random
-
 @app.post("/api/catalog/sync")
-def sync_catalog(db: Session = Depends(get_db)):
+def sync_catalog():
     import requests
+    db = SessionLocal()
     groups = ['stations', 'weather', 'iridium-33-debris', 'cosmos-2251-debris']
     headers = {'User-Agent': 'OrbitalGuard/1.2'}
     
@@ -89,34 +97,36 @@ def sync_catalog(db: Session = Depends(get_db)):
     
     added = 0
     for group in groups:
-        resp = requests.get(f"https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle", headers=headers)
-        if resp.status_code != 200: continue
-        
-        lines = resp.text.strip().split('\n')
-        batch = []
-        for i in range(0, len(lines), 3):
-            if i + 2 < len(lines):
-                name = lines[i].strip()
-                line1 = lines[i+1].strip()
-                line2 = lines[i+2].strip()
-                try:
-                    mean_motion = float(line2[52:63].strip())
-                    if mean_motion < 11.25: continue
-                    norad_id = int(line1[2:7])
-                    batch.append(MasterCatalog(norad_id=norad_id, name=name, tle_line1=line1, tle_line2=line2))
-                    added += 1
-                except: pass
-        # Fast bulk insert
-        if batch:
-            db.bulk_save_objects(batch)
-            db.commit()
+        try:
+            resp = requests.get(f"https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle", headers=headers, timeout=15)
+            if resp.status_code != 200: continue
             
+            lines = resp.text.strip().split('\n')
+            batch = []
+            for i in range(0, len(lines), 3):
+                if i + 2 < len(lines):
+                    name = lines[i].strip()
+                    line1 = lines[i+1].strip()
+                    line2 = lines[i+2].strip()
+                    try:
+                        mean_motion = float(line2[52:63].strip())
+                        if mean_motion < 11.25: continue
+                        norad_id = int(line1[2:7])
+                        batch.append(MasterCatalog(norad_id=norad_id, name=name, tle_line1=line1, tle_line2=line2))
+                        added += 1
+                    except: pass
+            if batch:
+                db.bulk_save_objects(batch)
+                db.commit()
+        except Exception as e:
+            pass
+    
+    db.close()
     return {"status": "success", "objects_synced": added}
 
 @app.get("/api/catalog/search")
 def search_catalog(q: str):
     db = SessionLocal()
-    # If purely numeric, search by ID
     if q.isdigit():
         results = db.query(MasterCatalog).filter(MasterCatalog.norad_id == int(q)).limit(10).all()
     else:
@@ -130,7 +140,6 @@ def search_catalog(q: str):
 def add_object(norad_id: int):
     db = SessionLocal()
     
-    # Check if already tracked
     existing = db.query(TrackedObject).filter(TrackedObject.norad_id == norad_id).first()
     if existing:
         db.close()
@@ -139,7 +148,7 @@ def add_object(norad_id: int):
     master_obj = db.query(MasterCatalog).filter(MasterCatalog.norad_id == norad_id).first()
     if not master_obj:
         db.close()
-        return {"error": "not found in master catalog"}, 404
+        return {"error": "not found in master catalog"}
         
     new_obj = TrackedObject(
         norad_id=master_obj.norad_id,
@@ -153,8 +162,10 @@ def add_object(norad_id: int):
     db.commit()
     db.close()
     
-    # Run focused conjunction detection
-    detect_conjunctions(new_norad_id=norad_id)
+    # Skip conjunction detection on Vercel (too slow for serverless)
+    if os.name == 'nt':
+        from propagation import detect_conjunctions
+        detect_conjunctions(new_norad_id=norad_id)
     return {"status": "success"}
 
 @app.post("/api/objects/random")
@@ -167,6 +178,10 @@ def add_random():
     
     # Get all IDs from master
     all_ids = [r[0] for r in db.query(MasterCatalog.norad_id).all()]
+    if not all_ids:
+        db.close()
+        return {"status": "error", "message": "master catalog is empty, run /api/catalog/sync first"}
+    
     random_ids = random.sample(all_ids, min(20, len(all_ids)))
     
     master_objs = db.query(MasterCatalog).filter(MasterCatalog.norad_id.in_(random_ids)).all()
@@ -184,7 +199,10 @@ def add_random():
     db.commit()
     db.close()
     
-    detect_conjunctions()
+    # Skip conjunction detection on Vercel (too slow for serverless)
+    if os.name == 'nt':
+        from propagation import detect_conjunctions
+        detect_conjunctions()
     return {"status": "success"}
 
 @app.post("/api/objects/clear")
@@ -195,7 +213,3 @@ def clear_objects():
     db.commit()
     db.close()
     return {"status": "success"}
-
-@app.get("/api/health")
-def health_check():
-    return {"status": "ok"}
