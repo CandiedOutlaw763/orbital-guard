@@ -1,4 +1,5 @@
 import os
+import ssl
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from dotenv import load_dotenv
@@ -8,14 +9,22 @@ load_dotenv()
 postgres_url = os.getenv("POSTGRES_URL")
 
 if postgres_url:
-    # SQLAlchemy requires postgresql:// instead of postgres://
+    # Strip sslmode param (pg8000 doesn't support it as a URL param)
+    if "?sslmode=" in postgres_url:
+        postgres_url = postgres_url.split("?sslmode=")[0]
+    elif "&sslmode=" in postgres_url:
+        postgres_url = postgres_url.replace("&sslmode=require", "")
+    
+    # SQLAlchemy + pg8000 requires postgresql+pg8000://
     if postgres_url.startswith("postgres://"):
         postgres_url = postgres_url.replace("postgres://", "postgresql+pg8000://", 1)
     elif postgres_url.startswith("postgresql://"):
         postgres_url = postgres_url.replace("postgresql://", "postgresql+pg8000://", 1)
+    
     SQLALCHEMY_DATABASE_URL = postgres_url
-    # For Postgres, we don't need check_same_thread
-    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    # pg8000 uses ssl_context for SSL connections
+    ssl_context = ssl.create_default_context()
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"ssl_context": ssl_context})
 else:
     db_path = os.path.join(os.path.dirname(__file__), "space_dashboard.db")
     SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}"
