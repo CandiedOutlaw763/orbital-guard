@@ -22,7 +22,7 @@ export function GlobePanel() {
       className="relative aspect-3/2 w-full overflow-hidden bg-background lg:aspect-auto lg:min-h-0 lg:w-auto lg:flex-1"
       aria-label="Orbital conjunction visualization"
     >
-      {/* <GlobeViz /> */}
+      <GlobeViz />
 
       {/* Mask the render's own top overlays so only the live UI shows */}
       <div
