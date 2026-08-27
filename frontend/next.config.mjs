@@ -1,8 +1,9 @@
-/** @type {import('next').NextConfig} */
+﻿/** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  serverExternalPackages: ['three', 'react-globe.gl', 'satellite.js'],
   images: {
     unoptimized: true,
   },
