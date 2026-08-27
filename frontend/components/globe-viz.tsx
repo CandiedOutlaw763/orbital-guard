@@ -45,17 +45,19 @@ export default function GlobeViz() {
   }, []);
 
   useEffect(() => {
-    const handleResize = () => {
-      if (containerRef.current) {
+    if (!containerRef.current) return;
+    
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (let entry of entries) {
         setSize({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight
+          width: entry.contentRect.width,
+          height: entry.contentRect.height
         });
       }
-    };
-    window.addEventListener('resize', handleResize);
-    handleResize();
-    return () => window.removeEventListener('resize', handleResize);
+    });
+    
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
   }, []);
 
   // Use satellite.js to compute positions for the current time
@@ -186,15 +188,20 @@ export default function GlobeViz() {
         ref={globeRef}
         width={size.width}
         height={size.height}
-        globeImageUrl="//cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg"
-        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+        globeImageUrl="https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg"
+        backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png"
         objectsData={objectsData as any[]}
         objectLabel="name"
         objectLat="lat"
         objectLng="lng"
         objectAltitude="alt"
         objectThreeObject={() => {
-          if (!satTexture) return new THREE.Mesh();
+          if (!satTexture) {
+            return new THREE.Mesh(
+              new THREE.SphereGeometry(2),
+              new THREE.MeshBasicMaterial({ color: 0xffffff })
+            );
+          }
           const material = new THREE.SpriteMaterial({ map: satTexture, color: 0xffffff });
           const sprite = new THREE.Sprite(material);
           sprite.scale.set(4, 4, 1);
