@@ -33,7 +33,7 @@ try:
     from skyfield.api import EarthSatellite, load, wgs84
     if os.name != 'nt':
         load.directory = '/tmp'
-    ts = load.timescale()
+    ts = load.timescale(builtin=True)
 except Exception as e:
     startup_errors.append(f"skyfield import: {traceback.format_exc()}")
     ts = None
