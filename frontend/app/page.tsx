@@ -1,17 +1,13 @@
 import { AppHeader } from '@/components/app-header'
-import { GlobePanel } from '@/components/globe-panel'
-import { SidePanel } from '@/components/side-panel'
+import { DashboardMain } from '@/components/dashboard-main'
 import { OrbitalProvider } from '@/components/orbital-context'
 
 export default function Page() {
   return (
     <OrbitalProvider>
-      <div className="flex min-h-svh flex-col bg-background font-sans lg:h-svh lg:overflow-hidden">
+      <div className="flex h-svh max-h-svh flex-col overflow-hidden bg-background font-sans">
         <AppHeader />
-        <main className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          <GlobePanel />
-          <SidePanel />
-        </main>
+        <DashboardMain />
       </div>
     </OrbitalProvider>
   )

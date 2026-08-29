@@ -1,18 +1,43 @@
 'use client'
 
-import { Activity, ChevronDown, RefreshCw } from 'lucide-react'
+import { Activity, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { useOrbitalData } from './orbital-context'
 import { cn } from '@/lib/utils'
+import {
+  collisionProbability,
+  formatCountdown,
+  missDistanceLabel,
+  riskLevel,
+  toScientific,
+} from '@/lib/conjunction-analytics'
 
-const riskStyles: Record<string, string> = {
-  HIGH: 'bg-destructive/15 text-destructive',
-  MODERATE: 'bg-warning/15 text-warning',
-  LOW: 'bg-success/15 text-success',
-}
+const riskTone = {
+  HIGH: {
+    badge: 'bg-destructive/20 text-destructive',
+    bar: 'bg-destructive',
+    countdown: 'text-destructive',
+  },
+  MODERATE: {
+    badge: 'bg-warning/20 text-warning',
+    bar: 'bg-warning',
+    countdown: 'text-warning',
+  },
+  LOW: {
+    badge: 'bg-success/20 text-success',
+    bar: 'bg-success',
+    countdown: 'text-success',
+  },
+} as const
 
 function AlertList() {
-  const { conjunctions, currentTime } = useOrbitalData();
+  const {
+    conjunctions,
+    currentTime,
+    selectedConjunctionId,
+    setSelectedConjunctionId,
+    setActiveView,
+  } = useOrbitalData()
 
   if (conjunctions.length === 0) {
     return <p className="text-sm text-muted-foreground">No conjunctions found.</p>
@@ -21,58 +46,90 @@ function AlertList() {
   return (
     <ul className="flex flex-col gap-3">
       {conjunctions.slice(0, 10).map((alert) => {
-        const risk = alert.risk_score > 7 ? 'HIGH' : alert.risk_score > 4 ? 'MODERATE' : 'LOW';
-        const tcaDateObj = new Date(alert.tca_time);
-        
-        // Calculate countdown
-        const diff = tcaDateObj.getTime() - currentTime.getTime();
-        let countdown = "Passed";
-        if (diff > 0) {
-          const h = Math.floor(diff / 3600000);
-          const m = Math.floor((diff % 3600000) / 60000);
-          const s = Math.floor((diff % 60000) / 1000);
-          countdown = `${h}h ${m}m ${s}s`;
-        }
-
-        const tcaDate = tcaDateObj.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
-        const tcaTimeStr = tcaDateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
+        const risk = riskLevel(alert.risk_score)
+        const tone = riskTone[risk]
+        const tca = new Date(alert.tca_time)
+        const selected = selectedConjunctionId === alert.id
+        const countdown = formatCountdown(tca, currentTime)
+        const miss = missDistanceLabel(alert.miss_distance_km)
+        const pc = collisionProbability(alert.miss_distance_km, alert.relative_velocity_km_s)
+        const sci = toScientific(pc)
 
         return (
           <li key={alert.id}>
-            <article className="rounded-lg border border-border bg-panel p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-2">
-                  <span
-                    className={cn(
-                      'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider',
-                      riskStyles[risk],
-                    )}
-                  >
-                    {risk}
-                  </span>
-                  <h3 className="font-mono text-sm leading-snug text-foreground truncate">
-                    {alert.object1?.name} &times; {alert.object2?.name}
-                  </h3>
-                </div>
-                <p className="shrink-0 text-right font-mono text-xs text-muted-foreground">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedConjunctionId(alert.id)
+                setActiveView('risk')
+              }}
+              className={cn(
+                'relative w-full overflow-hidden rounded-lg border bg-panel p-4 text-left transition-colors',
+                selected
+                  ? 'border-primary/60 bg-secondary/40 ring-1 ring-primary/40'
+                  : 'border-border hover:border-input hover:bg-secondary/30',
+              )}
+            >
+              {!selected && (
+                <span className={cn('absolute inset-y-0 left-0 w-0.5', tone.bar)} aria-hidden="true" />
+              )}
+
+              <div className="flex items-start justify-between gap-3 pl-1">
+                <span
+                  className={cn(
+                    'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.16em]',
+                    tone.badge,
+                  )}
+                >
+                  {risk}
+                </span>
+                <p
+                  className={cn(
+                    'shrink-0 text-right font-mono text-xs tabular-nums',
+                    countdown === 'Passed' ? 'text-muted-foreground' : tone.countdown,
+                  )}
+                >
                   {countdown}
                 </p>
               </div>
 
-              <div className="mt-4 flex items-end justify-between gap-3">
-                <div className="leading-snug">
-                  <p className="text-[11px] tracking-wider text-muted-foreground">TCA</p>
-                  <p className="font-mono text-xs text-foreground">{tcaDate}</p>
-                  <p className="font-mono text-xs text-foreground">{tcaTimeStr}</p>
+              <h3 className="mt-3 space-y-0.5 pl-1 font-mono text-sm leading-snug">
+                <span className="block truncate text-foreground">{alert.object1?.name}</span>
+                <span className="block truncate text-muted-foreground">
+                  &times; {alert.object2?.name}
+                </span>
+              </h3>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3 pl-1">
+                <div className="min-w-0 leading-snug">
+                  <p className="text-[11px] tracking-[0.16em] text-muted-foreground">TCA</p>
+                  <p className="mt-1 font-mono text-xs text-foreground">
+                    {tca.toLocaleDateString('en-GB', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      timeZone: 'UTC',
+                    })}
+                  </p>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {tca.toLocaleTimeString('en-GB', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      timeZone: 'UTC',
+                    })}{' '}
+                    UTC
+                  </p>
                 </div>
-                <div className="text-right leading-snug">
-                  <p className="text-[11px] tracking-wider text-muted-foreground">Miss Distance</p>
-                  <p className="font-mono text-xs text-foreground">
-                    {alert.miss_distance_km.toFixed(2)} km
+                <div className="min-w-0 text-right leading-snug">
+                  <p className="text-[11px] tracking-[0.16em] text-muted-foreground">MISS / Pc</p>
+                  <p className="mt-1 font-mono text-xs text-foreground">{miss.primary}</p>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {sci.mantissa} &times; 10<sup>{sci.exponent}</sup>
                   </p>
                 </div>
               </div>
-            </article>
+            </button>
           </li>
         )
       })}
@@ -104,7 +161,7 @@ function MapLegend() {
 
 export function SidePanel() {
   const [statsOpen, setStatsOpen] = useState(true)
-  const { trackedObjects, conjunctions, refreshData, setFocusedObjectId } = useOrbitalData();
+  const { trackedObjects, conjunctions, refreshData, setFocusedObjectId } = useOrbitalData()
 
   const handleAddRandom = () => {
     fetch('/api/objects/random', { method: 'POST' })
@@ -121,16 +178,9 @@ export function SidePanel() {
   const maxRisk = conjunctions.length > 0 ? Math.max(...conjunctions.map(c => c.risk_score)) : 0;
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-t border-border bg-background lg:w-[22rem] lg:border-t-0 lg:border-l xl:w-[24rem]">
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+    <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-t border-border bg-background lg:h-full lg:w-[22rem] lg:border-t-0 lg:border-l xl:w-[24rem]">
+      <div className="border-b border-border px-5 py-4">
         <h2 className="text-sm font-semibold tracking-[0.14em]">CONJUNCTION ALERTS</h2>
-        <button
-          type="button"
-          onClick={refreshData}
-          className="text-xs text-primary transition-colors hover:text-foreground flex items-center gap-1"
-        >
-          <RefreshCw size={12} /> Refresh
-        </button>
       </div>
 
       <div className="scrollbar-thin flex flex-col gap-6 overflow-y-auto px-5 py-5 lg:flex-1">

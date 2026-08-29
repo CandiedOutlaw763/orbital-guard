@@ -8,7 +8,7 @@ import { useOrbitalData } from './orbital-context';
 import * as THREE from 'three';
 
 export default function GlobeViz() {
-  const globeRef = useRef<any>();
+  const globeRef = useRef<any>(null);
   const { trackedObjects, conjunctions, currentTime, focusedObjectId } = useOrbitalData();
   const [size, setSize] = useState({ width: 800, height: 600 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -27,7 +27,7 @@ export default function GlobeViz() {
             const lng = satellite.degreesLong(positionGd.longitude);
             globeRef.current.pointOfView({ lat, lng, altitude: 2 }, 1000);
           }
-        } catch (e) {
+        } catch {
           // Ignore
         }
       }
@@ -82,7 +82,7 @@ export default function GlobeViz() {
           lng,
           alt
         };
-      } catch (e) {
+      } catch {
         return null;
       }
     }).filter(Boolean);
@@ -175,7 +175,7 @@ export default function GlobeViz() {
           }
         }
         addPaths(futurePoints, 'rgba(245, 158, 11, 0.8)'); // Warning color
-      } catch (e) {
+      } catch {
         // Ignore parsing errors
       }
     });
@@ -183,7 +183,7 @@ export default function GlobeViz() {
   }, [trackedObjects, timeMinute]);
 
   return (
-    <div ref={containerRef} className="w-full h-full absolute inset-0">
+    <div ref={containerRef} className="absolute inset-0 overflow-hidden">
       <Globe
         ref={globeRef}
         width={size.width}
