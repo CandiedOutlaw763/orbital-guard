@@ -70,7 +70,7 @@
   --input: oklch(0.98 0.01 260 / 14%);
   --ring: oklch(0.68 0.17 250);
 
-  --radius: 0.5rem;
+  --ease-out-smooth: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {

@@ -16,6 +16,7 @@ export function ViewSwitcher() {
       className="pointer-events-none absolute top-4 left-1/2 z-20 -translate-x-1/2"
       role="tablist"
       aria-label="Visualization mode"
+      data-sidebar-chrome
     >
       <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-panel/90 p-1 shadow-lg backdrop-blur-sm">
         {views.map((item) => (
