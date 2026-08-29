@@ -1,0 +1,27 @@
+﻿# Dependencies
+node_modules/
+backend/venv/
+venv/
+__pycache__/
+frontend/api/venv/
+
+# Database & Secrets
+*.db
+*.sqlite3
+.env
+.env.*
+*.backup
+
+# Build outputs
+frontend/dist/
+dist/
+.vercel/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Other
+*.zip
+*.pdf
+three-globe-master/
