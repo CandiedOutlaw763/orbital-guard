@@ -102,9 +102,11 @@ function eciAt(tle1: string, tle2: string, date: Date) {
 }
 
 function riskScore(missKm: number, relVelKmS: number) {
-  const distScore = Math.min(8, 8 / Math.max(missKm, 0.25))
-  const velFactor = Math.min(1, relVelKmS / 15)
-  return Math.min(10, distScore + velFactor * 2)
+  if (missKm < 30) return 9.5
+  if (missKm < 80 && relVelKmS > 10) return 8.5
+  if (missKm < 80) return 5.0
+  if (relVelKmS >= 5) return 5.0
+  return 2.0
 }
 
 function recomputeConjunctions() {

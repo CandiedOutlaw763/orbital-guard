@@ -6,21 +6,16 @@ from database import SessionLocal, TrackedObject, Conjunction
 ts = load.timescale()
 
 def compute_risk_score(miss_distance_km, relative_velocity_km_s, size_a, size_b):
-    # Normalize miss distance (0 to 50 km) -> closer is higher risk
-    dist_factor = max(0.0, (50.0 - miss_distance_km) / 50.0)
-    
-    # Normalize velocity (0 to 15 km/s) -> faster is higher risk
-    vel_factor = min(1.0, relative_velocity_km_s / 15.0)
-    
-    # Size factor
-    size_map = {'SMALL': 0.1, 'MEDIUM': 0.5, 'LARGE': 1.0, 'UNKNOWN': 0.1, None: 0.1}
-    s_a = size_map.get(size_a, 0.1)
-    s_b = size_map.get(size_b, 0.1)
-    size_factor = min(1.0, (s_a + s_b) / 2.0)
-    
-    # Simple weighted sum for proxy risk (0 to 1)
-    risk = (dist_factor * 0.6) + (vel_factor * 0.2) + (size_factor * 0.2)
-    return min(1.0, risk)
+    # Rule-based risk classification tuned to the mission thresholds.
+    if miss_distance_km < 30:
+        return 9.5
+    if miss_distance_km < 80 and relative_velocity_km_s > 10:
+        return 8.5
+    if miss_distance_km < 80:
+        return 5.0
+    if relative_velocity_km_s >= 5:
+        return 5.0
+    return 2.0
 
 def detect_conjunctions(new_norad_id=None):
     print("Starting conjunction detection...")
