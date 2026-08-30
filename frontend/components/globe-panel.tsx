@@ -63,11 +63,6 @@ export function GlobePanel() {
       <GlobeViz onReady={(api) => { globeApi.current = api }} />
 
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-background"
-        aria-hidden="true"
-      />
-
-      <div
         className={cn(
           'pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
           expanded ? 'opacity-0' : 'opacity-100',

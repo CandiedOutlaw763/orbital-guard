@@ -334,13 +334,13 @@ const GlobeViz = forwardRef<GlobeHandle, { onReady?: (handle: GlobeHandle) => vo
 
           if (!satTexture) {
             return new THREE.Mesh(
-              new THREE.SphereGeometry(isFocused ? 3 : 1.5),
+              new THREE.SphereGeometry(isFocused ? 1.2 : 0.75),
               new THREE.MeshBasicMaterial({ color: isFocused ? 0xffffff : 0xffffff })
             );
           }
           const material = new THREE.SpriteMaterial({ map: satTexture, color: isFocused ? 0xffffff : 0xffffff });
           const sprite = new THREE.Sprite(material);
-          const size = isFocused ? 8 : 4;
+          const size = isFocused ? 4.8 : 2.6;
           sprite.scale.set(size, size, 1);
           return sprite;
         }}

@@ -48,9 +48,16 @@ export function OrbitalProvider({ children }: { children: React.ReactNode }) {
   const [conjunctions, setConjunctions] = useState<Conjunction[]>([])
   const [currentTime, setCurrentTime] = useState(new Date())
   const [focusedObjectId, setFocusedObjectId] = useState<number | null>(null)
-  const [activeView, setActiveView] = useState<DashboardView>('globe')
+  const [activeView, setActiveViewState] = useState<DashboardView>('globe')
   const [selectedConjunctionId, setSelectedConjunctionId] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  const setActiveView = (view: DashboardView) => {
+    setActiveViewState(view)
+    if (view === 'risk') {
+      setSidebarOpen(true)
+    }
+  }
 
   const fetchData = () => {
     fetch('/api/objects')
@@ -81,6 +88,12 @@ export function OrbitalProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (activeView === 'risk') {
+      setSidebarOpen(true)
+    }
+  }, [activeView])
 
   useEffect(() => {
     let animationFrameId: number

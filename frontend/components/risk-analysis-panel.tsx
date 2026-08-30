@@ -28,7 +28,7 @@ function SatelliteWatermark() {
   return (
     <svg
       viewBox="0 0 120 88"
-      className="pointer-events-none absolute right-3 bottom-2 h-16 w-24 text-primary/25"
+      className="pointer-events-none absolute right-3 bottom-2 h-10 w-16 text-primary/25"
       aria-hidden="true"
     >
       <g fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -82,115 +82,149 @@ function ObjectCard({
 
 function DistanceChart({
   missKm,
+  relVelKmS,
 }: {
   missKm: number
   relVelKmS: number
 }) {
-  const width = 720
-  const height = 280
-  const pad = { l: 56, r: 28, t: 20, b: 40 }
+  const width = 820
+  const height = 360
+  const pad = { l: 64, r: 20, t: 20, b: 48 }
   const plotW = width - pad.l - pad.r
   const plotH = height - pad.t - pad.b
-  const hours = [-24, -18, -12, -6, 0, 6, 12]
-  const tMin = -24
-  const tMax = 12
+
+  const windowHours = Math.max(
+    2,
+    Math.min(
+      24,
+      Math.ceil(Math.max(1, Math.abs(missKm) / Math.max(relVelKmS * 3600, 1)) * 3),
+    ),
+  )
+  const tMin = -windowHours
+  const tMax = windowHours
 
   const samples = useMemo(() => {
-    const kmPerHour = Math.max(0.35, missKm * 0.18)
     const points: { h: number; d: number }[] = []
-    for (let h = tMin; h <= tMax; h += 0.25) {
-      points.push({
-        h,
-        d: Math.sqrt(missKm ** 2 + (kmPerHour * h) ** 2),
-      })
+    for (let i = 0; i <= 220; i++) {
+      const h = tMin + (i / 220) * (tMax - tMin)
+      const offsetSeconds = h * 3600
+      const d = Math.max(0.0001, distanceAtOffsetSeconds(missKm, relVelKmS, offsetSeconds))
+      points.push({ h, d })
     }
     return points
-  }, [missKm, tMin, tMax])
+  }, [missKm, relVelKmS, tMin, tMax])
 
-  const yMax = Math.max(10, ...samples.map((p) => p.d))
-  const yMin = Math.max(0.001, Math.min(missKm, 1) / 8)
-  const logMin = Math.log10(yMin)
-  const logMax = Math.log10(yMax)
+  const minDist = Math.min(...samples.map((p) => p.d))
+  const maxDist = Math.max(...samples.map((p) => p.d))
+  const yMin = Math.max(0.001, minDist * 0.7)
+  const yMax = Math.max(10, maxDist * 1.4)
 
   const xOf = (h: number) => pad.l + ((h - tMin) / (tMax - tMin)) * plotW
   const yOf = (d: number) => {
-    const t = (Math.log10(Math.max(d, yMin)) - logMin) / (logMax - logMin)
-    return pad.t + plotH - t * plotH
+    const logMin = Math.log10(yMin)
+    const logMax = Math.log10(yMax)
+    const scale = (Math.log10(Math.max(d, yMin)) - logMin) / (logMax - logMin || 1)
+    return pad.t + plotH - scale * plotH
   }
 
-  const path = samples
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xOf(p.h).toFixed(2)} ${yOf(p.d).toFixed(2)}`)
+  const line = samples
+    .map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${xOf(p.h).toFixed(2)} ${yOf(p.d).toFixed(2)}`)
     .join(' ')
 
-  const yTicks = []
-  const startExp = Math.floor(logMin)
-  const endExp = Math.ceil(logMax)
-  for (let exp = startExp; exp <= endExp; exp++) {
-    yTicks.push(10 ** exp)
-  }
+  const area = `${line} L ${xOf(tMax).toFixed(2)} ${(pad.t + plotH).toFixed(2)} L ${xOf(tMin).toFixed(2)} ${(pad.t + plotH).toFixed(2)} Z`
 
-  const missLabel = missDistanceLabel(missKm)
+  const yTicks = Array.from({ length: 5 }, (_, i) => {
+    const v = yMin * 10 ** ((Math.log10(yMax / yMin) / 4) * i)
+    return v
+  })
+  const xTicks = Array.from({ length: 5 }, (_, i) => tMin + ((tMax - tMin) / 4) * i)
 
   return (
-    <article className="rounded-lg border border-border bg-panel p-5">
-      <h3 className="text-[11px] tracking-[0.18em] text-muted-foreground">DISTANCE (KM)</h3>
-      <div className="mt-3 overflow-x-auto">
+    <article className="h-full min-h-[28rem] rounded-lg border border-border bg-panel p-5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-[11px] tracking-[0.18em] text-muted-foreground">SEPARATION DISTANCE</h3>
+        <span className="font-mono text-[11px] text-muted-foreground">TCA: {missDistanceLabel(missKm).primary}</span>
+      </div>
+
+      <div className="h-[24rem] w-full overflow-hidden rounded-md border border-border/60 bg-background/40">
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="h-56 w-full min-w-[28rem] text-muted-foreground"
+          className="h-full w-full"
           role="img"
-          aria-label="Separation distance versus time around TCA"
+          aria-label="Separation distance versus time around closest approach"
         >
+          <defs>
+            <linearGradient id="distanceFill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="oklch(0.72 0.19 148 / 0.45)" />
+              <stop offset="100%" stopColor="oklch(0.72 0.19 148 / 0.04)" />
+            </linearGradient>
+          </defs>
+
           {yTicks.map((tick) => (
-            <g key={tick}>
+            <g key={tick.toFixed(6)}>
               <line
                 x1={pad.l}
                 x2={width - pad.r}
                 y1={yOf(tick)}
                 y2={yOf(tick)}
                 stroke="currentColor"
-                strokeOpacity="0.18"
+                strokeOpacity="0.12"
               />
               <text
-                x={pad.l - 8}
+                x={pad.l - 12}
                 y={yOf(tick) + 4}
                 textAnchor="end"
-                className="fill-muted-foreground"
+                fill="currentColor"
                 fontSize="11"
               >
-                {tick >= 1 ? tick : tick.toExponential(0)}
+                {tick >= 1000 ? `${(tick / 1000).toFixed(1)}k` : tick < 1 ? tick.toFixed(2) : tick.toFixed(0)}
               </text>
             </g>
           ))}
-          {hours.map((h) => (
-            <text
-              key={h}
-              x={xOf(h)}
-              y={height - 12}
-              textAnchor="middle"
-              className="fill-muted-foreground"
-              fontSize="11"
-            >
-              {h === 0 ? 'TCA' : `${h > 0 ? '+' : ''}${h}h`}
-            </text>
+
+          {xTicks.map((tick) => (
+            <g key={tick}>
+              <line
+                x1={xOf(tick)}
+                x2={xOf(tick)}
+                y1={pad.t}
+                y2={pad.t + plotH}
+                stroke="currentColor"
+                strokeOpacity="0.08"
+              />
+              <text
+                x={xOf(tick)}
+                y={height - 18}
+                textAnchor="middle"
+                fill="currentColor"
+                fontSize="11"
+              >
+                {tick === 0 ? 'TCA' : `${tick > 0 ? '+' : ''}${tick.toFixed(0)}h`}
+              </text>
+            </g>
           ))}
+
           <line
             x1={xOf(0)}
             x2={xOf(0)}
             y1={pad.t}
             y2={pad.t + plotH}
             stroke="oklch(0.6 0.22 25)"
-            strokeDasharray="4 4"
+            strokeDasharray="6 6"
           />
-          <path d={path} fill="none" stroke="oklch(0.72 0.19 148)" strokeWidth="2.4" />
-          <circle cx={xOf(0)} cy={yOf(missKm)} r="5" fill="oklch(0.6 0.22 25)" />
+
+          <path d={area} fill="url(#distanceFill)" stroke="none" />
+          <path d={line} fill="none" stroke="oklch(0.72 0.19 148)" strokeWidth="3" />
+
+          <circle cx={xOf(0)} cy={yOf(missKm)} r="6" fill="oklch(0.6 0.22 25)" />
           <text
-            x={xOf(0) + 10}
-            y={yOf(missKm) - 10}
-            className="fill-destructive"
-            fontSize="11"
+            x={xOf(0) + 12}
+            y={yOf(missKm) - 12}
+            fill="oklch(0.6 0.22 25)"
+            fontSize="12"
+            fontWeight="600"
           >
-            Miss Distance {missLabel.primary}
+            Miss at TCA
           </text>
         </svg>
       </div>

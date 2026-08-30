@@ -13,9 +13,11 @@ import { isFinePointerDevice, isSidebarDismissIgnored } from '@/lib/sidebar-inte
 export function DashboardMain() {
   const { activeView, sidebarOpen, setSidebarOpen } = useOrbitalData()
   const pointerStart = useRef<{ x: number; y: number } | null>(null)
+  const isRiskAnalysisView = activeView === 'risk'
+  const sidebarVisible = isRiskAnalysisView || sidebarOpen
 
   const closeFromWorkspace = (event: SyntheticEvent, mode: 'click' | 'dblclick') => {
-    if (!sidebarOpen) return
+    if (isRiskAnalysisView || !sidebarOpen) return
     if (isSidebarDismissIgnored(event.target)) return
     if (typeof window !== 'undefined' && window.getSelection()?.toString()) return
     const fine = isFinePointerDevice()
@@ -46,23 +48,25 @@ export function DashboardMain() {
       >
         <ViewSwitcher />
         {activeView === 'globe' ? <GlobePanel /> : <RiskAnalysisPanel />}
-        <button
-          type="button"
-          data-sidebar-chrome
-          aria-label="Open conjunction alerts"
-          onClick={() => setSidebarOpen(true)}
-          className={cn(
-            'absolute top-1/2 right-0 z-30 flex h-16 w-7 -translate-y-1/2 items-center justify-center rounded-l-md border border-r-0 border-border bg-panel/95 text-muted-foreground backdrop-blur-sm transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:text-foreground',
-            sidebarOpen
-              ? 'pointer-events-none translate-x-2 opacity-0'
-              : 'translate-x-0 opacity-100',
-          )}
-        >
-          <ChevronLeft className="size-4" />
-        </button>
+        {!isRiskAnalysisView && (
+          <button
+            type="button"
+            data-sidebar-chrome
+            aria-label="Open conjunction alerts"
+            onClick={() => setSidebarOpen(true)}
+            className={cn(
+              'absolute top-1/2 right-0 z-30 flex h-16 w-7 -translate-y-1/2 items-center justify-center rounded-l-md border border-r-0 border-border bg-panel/95 text-muted-foreground backdrop-blur-sm transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:text-foreground',
+              sidebarOpen
+                ? 'pointer-events-none translate-x-2 opacity-0'
+                : 'translate-x-0 opacity-100',
+            )}
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+        )}
       </div>
 
-      {sidebarOpen && (
+      {sidebarOpen && !isRiskAnalysisView && (
         <button
           type="button"
           aria-label="Close conjunction alerts"
@@ -77,8 +81,8 @@ export function DashboardMain() {
           'transition-[width,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
           'motion-reduce:transition-none',
           'max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:h-full max-lg:w-[min(22rem,100vw)] max-lg:border-l max-lg:border-border',
-          sidebarOpen ? 'max-lg:translate-x-0' : 'pointer-events-none max-lg:translate-x-full',
-          sidebarOpen ? 'lg:w-[22rem] xl:w-[24rem]' : 'lg:w-0',
+          sidebarVisible ? 'max-lg:translate-x-0' : 'pointer-events-none max-lg:translate-x-full',
+          sidebarVisible ? 'lg:w-[22rem] xl:w-[24rem]' : 'lg:w-0',
         )}
       >
         <div className="flex h-full w-[min(22rem,100vw)] lg:w-[22rem] xl:w-[24rem]">

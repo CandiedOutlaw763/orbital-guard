@@ -9,7 +9,7 @@ const views = [
 ]
 
 export function ViewSwitcher() {
-  const { activeView, setActiveView } = useOrbitalData()
+  const { activeView, setActiveView, setSidebarOpen } = useOrbitalData()
 
   return (
     <div
@@ -18,19 +18,22 @@ export function ViewSwitcher() {
       aria-label="Visualization mode"
       data-sidebar-chrome
     >
-      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-panel/90 p-1 shadow-lg backdrop-blur-sm">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/65 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.65),0_0_0_1px_rgba(148,163,184,0.12)] backdrop-blur-xl">
         {views.map((item) => (
           <button
             key={item.id}
             type="button"
             role="tab"
             aria-selected={activeView === item.id}
-            onClick={() => setActiveView(item.id)}
+            onClick={() => {
+              setActiveView(item.id)
+              if (item.id === 'risk') setSidebarOpen(true)
+            }}
             className={cn(
-              'rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-colors',
+              'rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-all duration-200',
               activeView === item.id
-                ? 'bg-secondary text-foreground ring-1 ring-primary/50'
-                : 'text-muted-foreground hover:text-foreground',
+                ? 'bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] ring-1 ring-white/20'
+                : 'text-slate-300 hover:bg-white/5 hover:text-white',
             )}
           >
             {item.label}
