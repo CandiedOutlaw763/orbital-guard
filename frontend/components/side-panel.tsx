@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, ChevronDown } from 'lucide-react'
+import { Activity, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { useOrbitalData } from './orbital-context'
 import { cn } from '@/lib/utils'
@@ -161,7 +161,7 @@ function MapLegend() {
 
 export function SidePanel() {
   const [statsOpen, setStatsOpen] = useState(true)
-  const { trackedObjects, conjunctions, refreshData, setFocusedObjectId } = useOrbitalData()
+  const { trackedObjects, conjunctions, refreshData, setFocusedObjectId, setSidebarOpen } = useOrbitalData()
 
   const handleAddRandom = () => {
     fetch('/api/objects/random', { method: 'POST' })
@@ -178,9 +178,17 @@ export function SidePanel() {
   const maxRisk = conjunctions.length > 0 ? Math.max(...conjunctions.map(c => c.risk_score)) : 0;
 
   return (
-    <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-t border-border bg-background lg:h-full lg:w-[22rem] lg:border-t-0 lg:border-l xl:w-[24rem]">
-      <div className="border-b border-border px-5 py-4">
+    <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-t border-border bg-background lg:border-t-0 lg:border-l">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-4">
         <h2 className="text-sm font-semibold tracking-[0.14em]">CONJUNCTION ALERTS</h2>
+        <button
+          type="button"
+          aria-label="Close conjunction alerts"
+          onClick={() => setSidebarOpen(false)}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <ChevronRight className="size-4" />
+        </button>
       </div>
 
       <div className="scrollbar-thin flex flex-col gap-6 overflow-y-auto px-5 py-5 lg:flex-1">

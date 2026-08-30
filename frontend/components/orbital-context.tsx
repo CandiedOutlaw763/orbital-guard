@@ -37,6 +37,8 @@ type OrbitalContextType = {
   setActiveView: (view: DashboardView) => void
   selectedConjunctionId: number | null
   setSelectedConjunctionId: (id: number | null) => void
+  sidebarOpen: boolean
+  setSidebarOpen: (open: boolean) => void
 }
 
 const OrbitalContext = createContext<OrbitalContextType | undefined>(undefined)
@@ -48,6 +50,7 @@ export function OrbitalProvider({ children }: { children: React.ReactNode }) {
   const [focusedObjectId, setFocusedObjectId] = useState<number | null>(null)
   const [activeView, setActiveView] = useState<DashboardView>('globe')
   const [selectedConjunctionId, setSelectedConjunctionId] = useState<number | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const fetchData = () => {
     fetch('/api/objects')
@@ -107,6 +110,8 @@ export function OrbitalProvider({ children }: { children: React.ReactNode }) {
         setActiveView,
         selectedConjunctionId,
         setSelectedConjunctionId,
+        sidebarOpen,
+        setSidebarOpen,
       }}
     >
       {children}

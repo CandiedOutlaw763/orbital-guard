@@ -1,17 +1,45 @@
 'use client'
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
 import Globe from 'react-globe.gl';
 import * as satellite from 'satellite.js';
 import { useOrbitalData } from './orbital-context';
 
 import * as THREE from 'three';
 
-export default function GlobeViz() {
+export type GlobeHandle = {
+  zoomIn: () => void
+  zoomOut: () => void
+  center: () => void
+}
+
+const GlobeViz = forwardRef<GlobeHandle, { onReady?: (handle: GlobeHandle) => void }>(function GlobeViz({ onReady }, ref) {
   const globeRef = useRef<any>(null);
   const { trackedObjects, conjunctions, currentTime, focusedObjectId } = useOrbitalData();
   const [size, setSize] = useState({ width: 800, height: 600 });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const commands = () => ({
+    zoomIn() {
+      const pov = globeRef.current?.pointOfView?.() as { altitude?: number } | undefined
+      const alt = typeof pov?.altitude === 'number' ? pov.altitude : 2.4
+      globeRef.current?.pointOfView({ altitude: Math.max(0.45, alt * 0.72) }, 400)
+    },
+    zoomOut() {
+      const pov = globeRef.current?.pointOfView?.() as { altitude?: number } | undefined
+      const alt = typeof pov?.altitude === 'number' ? pov.altitude : 2.4
+      globeRef.current?.pointOfView({ altitude: Math.min(6.5, alt * 1.35) }, 400)
+    },
+    center() {
+      globeRef.current?.pointOfView({ lat: 20, lng: 78, altitude: 2.35 }, 800)
+    },
+  })
+
+  useImperativeHandle(ref, () => commands())
+
+  useEffect(() => {
+    onReady?.(commands())
+  }, [onReady])
 
   useEffect(() => {
     if (focusedObjectId && globeRef.current && trackedObjects) {
@@ -227,4 +255,6 @@ export default function GlobeViz() {
       />
     </div>
   );
-}
+})
+
+export default GlobeViz
