@@ -56,10 +56,10 @@ export function AppHeader() {
                   hour: '2-digit',
                   minute: '2-digit',
                   second: '2-digit',
-                  timeZone: 'UTC',
+                  
                 })
               : '--:--:--'}{' '}
-            <span className="text-muted-foreground">UTC</span>
+            <span className="text-muted-foreground">LOCAL</span>
           </p>
           <p className="text-[11px] text-muted-foreground">
             {now
@@ -67,7 +67,7 @@ export function AppHeader() {
                   day: '2-digit',
                   month: 'short',
                   year: 'numeric',
-                  timeZone: 'UTC',
+                  
                 })
               : '--- ----'}
           </p>

@@ -37,6 +37,7 @@ function AlertList() {
     selectedConjunctionId,
     setSelectedConjunctionId,
     setActiveView,
+    setFocusedObjectId,
   } = useOrbitalData()
 
   if (conjunctions.length === 0) {
@@ -61,7 +62,7 @@ function AlertList() {
               type="button"
               onClick={() => {
                 setSelectedConjunctionId(alert.id)
-                setActiveView('risk')
+                setFocusedObjectId(null) // Clear focused object so conjunction takes precedence
               }}
               className={cn(
                 'relative w-full overflow-hidden rounded-lg border bg-panel p-4 text-left transition-colors',
@@ -161,7 +162,7 @@ function MapLegend() {
 
 export function SidePanel() {
   const [statsOpen, setStatsOpen] = useState(true)
-  const { trackedObjects, conjunctions, refreshData, setFocusedObjectId, setSidebarOpen } = useOrbitalData()
+  const { trackedObjects, conjunctions, refreshData, setFocusedObjectId, setSelectedConjunctionId, setSidebarOpen } = useOrbitalData()
 
   const handleAddRandom = () => {
     fetch('/api/objects/random', { method: 'POST' })
@@ -249,7 +250,10 @@ export function SidePanel() {
               <li key={object.norad_id}>
                 <button
                   type="button"
-                  onClick={() => setFocusedObjectId(object.norad_id)}
+                  onClick={() => {
+                    setFocusedObjectId(object.norad_id);
+                    setSelectedConjunctionId(null);
+                  }}
                   className={cn(
                     'w-full rounded-lg border p-4 text-left transition-colors',
                     'border-border bg-panel hover:border-input',
