@@ -66,10 +66,11 @@ export function OrbitalProvider({ children }: { children: React.ReactNode }) {
         if (!Array.isArray(data)) return
         setConjunctions(data)
         setSelectedConjunctionId((current) => {
+          // Only maintain selection if it still exists. Do NOT auto-select if current is null.
           if (current != null && data.some((item: Conjunction) => item.id === current)) {
             return current
           }
-          return data[0]?.id ?? null
+          return null
         })
       })
       .catch(() => {})
