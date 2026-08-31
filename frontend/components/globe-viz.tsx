@@ -126,34 +126,12 @@ const GlobeViz = forwardRef<GlobeHandle, { onReady?: (handle: GlobeHandle) => vo
     }).filter(Boolean);
   }, [trackedObjects, currentTime]);
 
-  const arcsData = useMemo(() => {
-    const validObjects = objectsData.filter(Boolean) as any[];
-    const arcs: any[] = [];
-    conjunctions.forEach(c => {
-      if (c.risk_score > 4) {
-        const o1 = validObjects.find(o => o.norad_id === c.object1?.norad_id);
-        const o2 = validObjects.find(o => o.norad_id === c.object2?.norad_id);
-        if (o1 && o2) {
-          arcs.push({
-            startLat: o1.lat,
-            startLng: o1.lng,
-            endLat: o2.lat,
-            endLng: o2.lng,
-            color: c.risk_score > 7 ? 'rgba(255,0,0,0.8)' : 'rgba(255,165,0,0.8)',
-          });
-        }
-      }
-    });
-    return arcs;
-  }, [conjunctions, objectsData]);
-
-  // Compute paths once per minute to save CPU
-  const timeMinute = Math.floor(currentTime.getTime() / 60000);
-  const pathsData = useMemo(() => {
-    const paths: any[] = [];
-    const baseTime = new Date(timeMinute * 60000);
-    
-    trackedObjects.forEach(obj => {
+    // Compute paths every second so they perfectly match the rotating Earth and satellites
+    const pathsData = useMemo(() => {
+      const paths: any[] = [];
+      const baseTime = currentTime; // Use the exact same time as the satellites
+      
+      trackedObjects.forEach(obj => {
       if (!obj.tle1 || !obj.tle2) return;
       try {
         const satrec = satellite.twoline2satrec(obj.tle1, obj.tle2);
@@ -163,6 +141,10 @@ const GlobeViz = forwardRef<GlobeHandle, { onReady?: (handle: GlobeHandle) => vo
         if (focusedObjectId && !selectedConjunctionId) {
           isFocused = (focusedObjectId === obj.norad_id);
         }
+
+        // Use the EXACT same GMST that the satellites are currently using!
+        // This prevents the satellite from visually drifting off its orbital ring.
+        const baseGmst = satellite.gstime(baseTime);
 
         // Helper to split paths at the anti-meridian
         const addPaths = (points: number[][], color: string) => {
@@ -192,46 +174,62 @@ const GlobeViz = forwardRef<GlobeHandle, { onReady?: (handle: GlobeHandle) => vo
           pushSegment(currentSegment);
         };
 
-        // Generate past path (T-45m to T)
-        const pastPoints = [];
-        for (let i = -45; i <= 0; i += 2) { // 2-minute steps
-          const t = new Date(baseTime.getTime() + i * 60000);
-          const posVel = satellite.propagate(satrec, t);
-          if (posVel.position) {
-            const gmst = satellite.gstime(t);
-            const posGd = satellite.eciToGeodetic(posVel.position as satellite.EciVec3<number>, gmst);
-            pastPoints.push([
-              satellite.degreesLat(posGd.latitude),
-              satellite.degreesLong(posGd.longitude),
-              posGd.height / 6371
-            ]);
-          }
-        }
-        
-        addPaths(pastPoints, 'rgba(239, 68, 68, 0.8)'); // Destructive color
+          // Calculate exact orbital period in minutes
+          // satrec.no is mean motion in radians/minute
+          const periodMinutes = (2 * Math.PI) / satrec.no;
+          const halfPeriod = periodMinutes / 2;
+          const stepSize = periodMinutes / 120; // 120 points for a very smooth circular ring
 
-        // Generate future path (T to T+45m)
-        const futurePoints = [];
-        for (let i = 0; i <= 45; i += 2) {
-          const t = new Date(baseTime.getTime() + i * 60000);
-          const posVel = satellite.propagate(satrec, t);
-          if (posVel.position) {
-            const gmst = satellite.gstime(t);
-            const posGd = satellite.eciToGeodetic(posVel.position as satellite.EciVec3<number>, gmst);
-            futurePoints.push([
-              satellite.degreesLat(posGd.latitude),
-              satellite.degreesLong(posGd.longitude),
-              posGd.height / 6371
-            ]);
+          // Generate past path
+          const pastPoints = [];
+          for (let i = -halfPeriod; i < 0; i += stepSize) {
+            const t = new Date(baseTime.getTime() + i * 60000);
+            const posVel = satellite.propagate(satrec, t);
+            if (posVel.position) {
+              const posGd = satellite.eciToGeodetic(posVel.position as satellite.EciVec3<number>, baseGmst);
+              pastPoints.push([
+                satellite.degreesLat(posGd.latitude),
+                satellite.degreesLong(posGd.longitude),
+                posGd.height / 6371
+              ]);
+            }
           }
-        }
-        addPaths(futurePoints, 'rgba(245, 158, 11, 0.8)'); // Warning color
+          // Explicitly push exactly 0 to guarantee connection
+          const posVel0 = satellite.propagate(satrec, baseTime);
+          if (posVel0.position) {
+            const posGd = satellite.eciToGeodetic(posVel0.position as satellite.EciVec3<number>, baseGmst);
+            pastPoints.push([satellite.degreesLat(posGd.latitude), satellite.degreesLong(posGd.longitude), posGd.height / 6371]);
+          }
+          addPaths(pastPoints, 'rgba(239, 68, 68, 0.8)'); // Destructive color
+
+          // Generate future path
+          const futurePoints = [];
+          for (let i = 0; i < halfPeriod; i += stepSize) {
+            const t = new Date(baseTime.getTime() + i * 60000);
+            const posVel = satellite.propagate(satrec, t);
+            if (posVel.position) {
+              const posGd = satellite.eciToGeodetic(posVel.position as satellite.EciVec3<number>, baseGmst);
+              futurePoints.push([
+                satellite.degreesLat(posGd.latitude),
+                satellite.degreesLong(posGd.longitude),
+                posGd.height / 6371
+              ]);
+            }
+          }
+          // Explicitly push exactly halfPeriod to guarantee connection
+          const tEnd = new Date(baseTime.getTime() + halfPeriod * 60000);
+          const posVelEnd = satellite.propagate(satrec, tEnd);
+          if (posVelEnd.position) {
+            const posGd = satellite.eciToGeodetic(posVelEnd.position as satellite.EciVec3<number>, baseGmst);
+            futurePoints.push([satellite.degreesLat(posGd.latitude), satellite.degreesLong(posGd.longitude), posGd.height / 6371]);
+          }
+          addPaths(futurePoints, 'rgba(245, 158, 11, 0.8)'); // Warning color
       } catch {
         // Ignore parsing errors
       }
     });
     return paths;
-  }, [trackedObjects, timeMinute, focusedObjectId, selectedConjunctionId, conjunctions]);
+  }, [trackedObjects, currentTime, focusedObjectId, selectedConjunctionId, conjunctions]);
 
   const focusedHtmlData = useMemo(() => {
     let result = [];
@@ -320,6 +318,7 @@ const GlobeViz = forwardRef<GlobeHandle, { onReady?: (handle: GlobeHandle) => vo
         objectLat="lat"
         objectLng="lng"
         objectAltitude="alt"
+        objectTransitionDuration={0}
         objectThreeObject={(d: any) => {
           
           let isFocused = true;
@@ -344,21 +343,13 @@ const GlobeViz = forwardRef<GlobeHandle, { onReady?: (handle: GlobeHandle) => vo
           sprite.scale.set(size, size, 1);
           return sprite;
         }}
-        arcsData={arcsData}
-        arcStartLat="startLat"
-        arcStartLng="startLng"
-        arcEndLat="endLat"
-        arcEndLng="endLng"
-        arcColor="color"
-        arcDashLength={0.4}
-        arcDashGap={0.2}
-        arcDashAnimateTime={1500}
         pathsData={pathsData}
         pathPoints="path"
         pathPointLat={d => d[0]}
         pathPointLng={d => d[1]}
         pathPointAlt={d => d[2]}
         pathColor="color"
+        pathTransitionDuration={0}
         onPathClick={(path: any) => {
           setFocusedObjectId(path.norad_id);
           setSelectedConjunctionId(null);

@@ -1,5 +1,5 @@
-import { addRandom } from '@/lib/orbital-store'
+import { getRandomNoradIds } from '@/lib/orbital-store'
 
-export async function POST() {
-  return Response.json(addRandom())
+export async function GET() {
+  return Response.json({ norad_ids: getRandomNoradIds(20) })
 }

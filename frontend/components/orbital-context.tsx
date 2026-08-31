@@ -31,6 +31,9 @@ type OrbitalContextType = {
   conjunctions: Conjunction[]
   currentTime: Date
   refreshData: () => void
+  addRandomObjects: (count: number) => void
+  addTrackedObject: (norad_id: number) => void
+  clearTrackedObjects: () => void
   focusedObjectId: number | null
   setFocusedObjectId: (id: number | null) => void
   activeView: DashboardView
@@ -59,15 +62,60 @@ export function OrbitalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const getActiveIds = (): number[] => {
+    try {
+      const stored = localStorage.getItem('active_norad_ids')
+      if (stored) return JSON.parse(stored)
+    } catch {}
+    return []
+  }
+
+  const setActiveIds = (ids: number[]) => {
+    localStorage.setItem('active_norad_ids', JSON.stringify(ids))
+    fetchData()
+  }
+
   const fetchData = () => {
-    fetch('/api/objects')
+    const activeIds = getActiveIds()
+    
+    // If empty and never initialized, load 20 random
+    if (activeIds.length === 0 && !localStorage.getItem('has_initialized')) {
+      fetch('/api/objects/random')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.norad_ids) {
+            localStorage.setItem('has_initialized', 'true')
+            setActiveIds(data.norad_ids)
+          }
+        })
+        .catch(() => {})
+      return
+    }
+
+    if (activeIds.length === 0) {
+      setTrackedObjects([])
+      setConjunctions([])
+      return
+    }
+
+    // Fetch batch objects
+    fetch('/api/objects/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ norad_ids: activeIds })
+    })
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setTrackedObjects(data)
       })
       .catch(() => {})
 
-    fetch('/api/conjunctions')
+    // Fetch batch conjunctions
+    fetch('/api/conjunctions/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ norad_ids: activeIds })
+    })
       .then((r) => r.json())
       .then((data) => {
         if (!Array.isArray(data)) return
@@ -111,6 +159,33 @@ export function OrbitalProvider({ children }: { children: React.ReactNode }) {
     return () => cancelAnimationFrame(animationFrameId)
   }, [])
 
+  const addRandomObjects = (count: number) => {
+    fetch('/api/objects/random')
+      .then(r => r.json())
+      .then(data => {
+        if (data.norad_ids) {
+          const activeIds = getActiveIds();
+          const newIds = Array.from(new Set([...activeIds, ...data.norad_ids]));
+          setActiveIds(newIds);
+        }
+      });
+  }
+
+  const addTrackedObject = (norad_id: number) => {
+    const activeIds = getActiveIds();
+    if (!activeIds.includes(norad_id)) {
+      setActiveIds([...activeIds, norad_id]);
+    }
+  }
+
+  const clearTrackedObjects = () => {
+    setActiveIds([]);
+    setTrackedObjects([]);
+    setConjunctions([]);
+    setFocusedObjectId(null);
+    setSelectedConjunctionId(null);
+  }
+
   return (
     <OrbitalContext.Provider
       value={{
@@ -118,6 +193,9 @@ export function OrbitalProvider({ children }: { children: React.ReactNode }) {
         conjunctions,
         currentTime,
         refreshData: fetchData,
+        addRandomObjects,
+        addTrackedObject,
+        clearTrackedObjects,
         focusedObjectId,
         setFocusedObjectId,
         activeView,

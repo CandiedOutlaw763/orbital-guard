@@ -166,6 +166,9 @@ export function SidePanel() {
     trackedObjects,
     conjunctions,
     refreshData,
+    addRandomObjects,
+    addTrackedObject,
+    clearTrackedObjects,
     setFocusedObjectId,
     setSelectedConjunctionId,
     setSidebarOpen,
@@ -173,16 +176,30 @@ export function SidePanel() {
   } = useOrbitalData()
   const isRiskAnalysisView = activeView === 'risk'
 
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<{norad_id: number, name: string}[]>([])
+
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const q = e.target.value
+    setSearchQuery(q)
+    if (q.length > 2) {
+      fetch(`/api/catalog/search?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data)) setSearchResults(data)
+        })
+        .catch(() => {})
+    } else {
+      setSearchResults([])
+    }
+  }
+
   const handleAddRandom = () => {
-    fetch('/api/objects/random', { method: 'POST' })
-      .then(r => r.json())
-      .then(() => refreshData());
+    addRandomObjects(20);
   };
 
   const handleClear = () => {
-    fetch('/api/objects/clear', { method: 'POST' })
-      .then(r => r.json())
-      .then(() => refreshData());
+    clearTrackedObjects();
   };
 
   const maxRisk = conjunctions.length > 0 ? Math.max(...conjunctions.map(c => c.risk_score)) : 0;
@@ -196,6 +213,7 @@ export function SidePanel() {
         ) : (
           <button
             type="button"
+            suppressHydrationWarning
             aria-label="Close conjunction alerts"
             onClick={() => setSidebarOpen(false)}
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
@@ -212,6 +230,7 @@ export function SidePanel() {
         <div className="border-t border-border pt-5">
           <button
             type="button"
+            suppressHydrationWarning
             onClick={() => setStatsOpen((open) => !open)}
             aria-expanded={statsOpen}
             className="flex w-full items-center justify-between text-left"
@@ -228,14 +247,45 @@ export function SidePanel() {
 
           {statsOpen && (
             <div className="mt-4 flex flex-col gap-4">
+              <div className="relative">
+                <input
+                  type="text"
+                  suppressHydrationWarning
+                  placeholder="Search catalog by name or ID..."
+                  value={searchQuery}
+                  onChange={handleSearch}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                />
+                {searchResults.length > 0 && (
+                  <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-panel shadow-lg">
+                    {searchResults.map(result => (
+                      <li key={result.norad_id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addTrackedObject(result.norad_id);
+                            setSearchQuery('');
+                            setSearchResults([]);
+                          }}
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-secondary text-foreground"
+                        >
+                          <div className="font-semibold">{result.name}</div>
+                          <div className="text-xs text-muted-foreground">{result.norad_id}</div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               <div className="flex justify-between items-end">
                 <div>
                   <p className="font-mono text-3xl leading-none tabular-nums">{trackedObjects.length}</p>
                   <p className="mt-1 text-xs text-muted-foreground">Total Tracked</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={handleAddRandom} className="text-xs border border-primary text-primary px-2 py-1 rounded hover:bg-primary/10">Add 20 Random</button>
-                  <button onClick={handleClear} className="text-xs border border-destructive text-destructive px-2 py-1 rounded hover:bg-destructive/10">Clear All</button>
+                  <button suppressHydrationWarning onClick={handleAddRandom} className="text-xs border border-primary text-primary px-2 py-1 rounded hover:bg-primary/10">Add 20 Random</button>
+                  <button suppressHydrationWarning onClick={handleClear} className="text-xs border border-destructive text-destructive px-2 py-1 rounded hover:bg-destructive/10">Clear All</button>
                 </div>
               </div>
 

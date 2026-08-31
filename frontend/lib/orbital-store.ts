@@ -59,7 +59,7 @@ export function getCatalog(): CatalogEntry[] {
   return catalog
 }
 
-function getCatalogById(): Map<number, CatalogEntry> {
+export function getCatalogById(): Map<number, CatalogEntry> {
   getCatalog()
   return catalogById as Map<number, CatalogEntry>
 }
@@ -160,7 +160,64 @@ function recomputeConjunctions() {
   conjunctions = found.slice(0, 8).sort((x, y) => y.risk_score - x.risk_score)
 }
 
-function toClientObject(obj: TrackedObjectRecord) {
+export function computeBatchConjunctions(norad_ids: number[]) {
+  const cById = getCatalogById()
+  const objects = norad_ids
+    .map(id => cById.get(id))
+    .filter(Boolean)
+    .map(e => ({ ...e!, type: 'UNKNOWN', size: 'UNKNOWN' }))
+  
+  const found: ConjunctionRecord[] = []
+  const now = Date.now()
+  const hours = 12
+  const stepMs = 5 * 60 * 1000
+  const steps = (hours * 60 * 60 * 1000) / stepMs
+  
+  let tempId = 1
+  for (let i = 0; i < objects.length; i++) {
+    for (let j = i + 1; j < objects.length; j++) {
+      const a = objects[i]
+      const b = objects[j]
+      let bestDist = Infinity
+      let bestTime = now
+      let bestRelVel = 0
+
+      for (let s = 0; s <= steps; s++) {
+        const t = new Date(now + s * stepMs)
+        const pa = eciAt(a.tle1, a.tle2, t)
+        const pb = eciAt(b.tle1, b.tle2, t)
+        if (!pa || !pb) continue
+        const dx = pa.position.x - pb.position.x
+        const dy = pa.position.y - pb.position.y
+        const dz = pa.position.z - pb.position.z
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+        if (dist < bestDist) {
+          bestDist = dist
+          bestTime = t.getTime()
+          const vx = pa.velocity.x - pb.velocity.x
+          const vy = pa.velocity.y - pb.velocity.y
+          const vz = pa.velocity.z - pb.velocity.z
+          bestRelVel = Math.sqrt(vx * vx + vy * vy + vz * vz)
+        }
+      }
+
+      found.push({
+        id: tempId++,
+        object1: { norad_id: a.norad_id, name: a.name },
+        object2: { norad_id: b.norad_id, name: b.name },
+        tca_time: new Date(bestTime).toISOString(),
+        miss_distance_km: bestDist,
+        relative_velocity_km_s: bestRelVel,
+        risk_score: riskScore(bestDist, bestRelVel),
+      })
+    }
+  }
+
+  found.sort((x, y) => x.miss_distance_km - y.miss_distance_km)
+  return found.slice(0, 8).sort((x, y) => y.risk_score - x.risk_score)
+}
+
+export function toClientObject(obj: TrackedObjectRecord) {
   try {
     const satrec = satellite.twoline2satrec(obj.tle1, obj.tle2)
     const now = new Date()
@@ -239,6 +296,16 @@ export function addObject(noradId: number) {
   tracked.set(noradId, { ...entry, type: 'UNKNOWN', size: 'UNKNOWN' })
   recomputeConjunctions()
   return { status: 'success' as const }
+}
+
+export function getRandomNoradIds(count = 20) {
+  const all = getCatalog()
+  const available = [...all]
+  for (let i = available.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[available[i], available[j]] = [available[j], available[i]]
+  }
+  return available.slice(0, count).map(e => e.norad_id)
 }
 
 export function addRandom(count = 20) {

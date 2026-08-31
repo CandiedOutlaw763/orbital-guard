@@ -190,44 +190,162 @@ def add_object(norad_id: int):
     db.close()
     return {"status": "success"}
 
-@app.post("/api/objects/random")
-def add_random():
+@app.get("/api/objects/random")
+def get_random():
     if startup_errors:
         return {"error": startup_errors}
     db = SessionLocal()
     
     # Get all IDs from master
     all_ids = [r[0] for r in db.query(MasterCatalog.norad_id).all()]
-    if not all_ids:
-        db.close()
-        return {"status": "error", "message": "master catalog is empty, run /api/catalog/sync first"}
-        
-    # Get currently tracked IDs
-    tracked_ids = {r[0] for r in db.query(TrackedObject.norad_id).all()}
-    
-    # Filter to only untracked IDs
-    available_ids = [i for i in all_ids if i not in tracked_ids]
-    
-    if not available_ids:
-        db.close()
-        return {"status": "success", "message": "All master catalog objects are already tracked"}
-    
-    random_ids = random.sample(available_ids, min(20, len(available_ids)))
-    master_objs = db.query(MasterCatalog).filter(MasterCatalog.norad_id.in_(random_ids)).all()
-    
-    for m in master_objs:
-        db.add(TrackedObject(
-            norad_id=m.norad_id,
-            name=m.name,
-            tle_line1=m.tle_line1,
-            tle_line2=m.tle_line2,
-            object_type='UNKNOWN',
-            rcs_size='UNKNOWN'
-        ))
-        
-    db.commit()
     db.close()
-    return {"status": "success"}
+    
+    if not all_ids:
+        return {"status": "error", "message": "master catalog is empty"}
+        
+    random_ids = random.sample(all_ids, min(20, len(all_ids)))
+    return {"status": "success", "norad_ids": random_ids}
+
+from pydantic import BaseModel
+from typing import List
+
+class NoradIdsRequest(BaseModel):
+    norad_ids: List[int]
+
+@app.post("/api/objects/batch")
+def get_objects_batch(req: NoradIdsRequest):
+    if startup_errors:
+        return []
+    db = SessionLocal()
+    objs = db.query(MasterCatalog).filter(MasterCatalog.norad_id.in_(req.norad_ids)).all()
+    
+    t = ts.now()
+    res = []
+    for obj in objs:
+        if not obj.tle_line1 or not obj.tle_line2:
+            continue
+        try:
+            sat = EarthSatellite(obj.tle_line1, obj.tle_line2, obj.name, ts)
+            geocentric = sat.at(t)
+            subpoint = wgs84.subpoint(geocentric)
+            
+            res.append({
+                "norad_id": obj.norad_id,
+                "name": obj.name,
+                "type": 'UNKNOWN',
+                "size": 'UNKNOWN',
+                "lat": subpoint.latitude.degrees,
+                "lng": subpoint.longitude.degrees,
+                "alt": subpoint.elevation.km,
+                "tle1": obj.tle_line1,
+                "tle2": obj.tle_line2
+            })
+        except Exception:
+            pass
+    db.close()
+    return res
+
+import numpy as np
+from datetime import datetime, timedelta, timezone
+
+def compute_risk_score(miss_distance_km, relative_velocity_km_s, size_a, size_b):
+    if miss_distance_km < 30: return 9.5
+    if miss_distance_km < 80 and relative_velocity_km_s > 10: return 8.5
+    if miss_distance_km < 80: return 5.0
+    if relative_velocity_km_s >= 5: return 5.0
+    return 2.0
+
+@app.post("/api/conjunctions/batch")
+def get_conjunctions_batch(req: NoradIdsRequest):
+    if startup_errors or not req.norad_ids:
+        return []
+        
+    db = SessionLocal()
+    objs = db.query(MasterCatalog).filter(MasterCatalog.norad_id.in_(req.norad_ids)).all()
+    db.close()
+    
+    sats = []
+    for obj in objs:
+        if not obj.tle_line1 or not obj.tle_line2:
+            continue
+        sat = EarthSatellite(obj.tle_line1, obj.tle_line2, obj.name, ts)
+        sats.append({'sat': sat, 'db_obj': obj})
+        
+    now = datetime.now(timezone.utc)
+    # Next 24 hours in 5 minute steps
+    times_coarse = [now + timedelta(minutes=5*i) for i in range(24 * 12)]
+    t_coarse = ts.from_datetimes(times_coarse)
+    
+    positions = []
+    velocities = []
+    valid_sats = []
+    
+    for s in sats:
+        try:
+            geocentric = s['sat'].at(t_coarse)
+            positions.append(geocentric.position.km)
+            velocities.append(geocentric.velocity.km_per_s)
+            valid_sats.append(s)
+        except Exception:
+            continue
+            
+    if len(valid_sats) < 2:
+        return []
+        
+    pos_array = np.array(positions)
+    N = len(valid_sats)
+    
+    res = []
+    conj_id = 1
+    
+    for i in range(N):
+        for j in range(i + 1, N):
+            diff = pos_array[i] - pos_array[j]
+            dist_sq = np.sum(diff**2, axis=0)
+            
+            min_dist_sq = np.min(dist_sq)
+            if min_dist_sq < 50.0**2:
+                min_idx = np.argmin(dist_sq)
+                coarse_tca = times_coarse[min_idx]
+                
+                times_fine = [coarse_tca + timedelta(seconds=10*k) for k in range(-60, 61)]
+                t_fine = ts.from_datetimes(times_fine)
+                
+                p_i = valid_sats[i]['sat'].at(t_fine).position.km
+                p_j = valid_sats[j]['sat'].at(t_fine).position.km
+                v_i = valid_sats[i]['sat'].at(t_fine).velocity.km_per_s
+                v_j = valid_sats[j]['sat'].at(t_fine).velocity.km_per_s
+                
+                diff_fine = p_i - p_j
+                dist_sq_fine = np.sum(diff_fine**2, axis=0)
+                fine_min_idx = np.argmin(dist_sq_fine)
+                
+                min_dist_km = float(np.sqrt(dist_sq_fine[fine_min_idx]))
+                actual_tca = times_fine[fine_min_idx]
+                
+                rel_vel = float(np.linalg.norm(v_i[:, fine_min_idx] - v_j[:, fine_min_idx]))
+                
+                risk = compute_risk_score(
+                    min_dist_km, 
+                    rel_vel, 
+                    'UNKNOWN', 
+                    'UNKNOWN'
+                )
+                
+                res.append({
+                    "id": conj_id,
+                    "object1": {"norad_id": valid_sats[i]['db_obj'].norad_id, "name": valid_sats[i]['db_obj'].name},
+                    "object2": {"norad_id": valid_sats[j]['db_obj'].norad_id, "name": valid_sats[j]['db_obj'].name},
+                    "tca_time": actual_tca.isoformat() + "Z",
+                    "miss_distance_km": min_dist_km,
+                    "relative_velocity_km_s": rel_vel,
+                    "risk_score": risk
+                })
+                conj_id += 1
+                
+    # Sort by risk score
+    res.sort(key=lambda x: x['risk_score'], reverse=True)
+    return res
 
 @app.post("/api/objects/clear")
 def clear_objects():
